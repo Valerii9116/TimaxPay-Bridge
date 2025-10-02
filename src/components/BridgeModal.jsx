@@ -5,7 +5,7 @@ import { X, ArrowDownUp, AlertCircle, ExternalLink, Check, QrCode, Loader2 } fro
 const CONFIG = {
   LIFI_API_URL: 'https://li.quest/v1',
   LIFI_INTEGRATOR: 'Timax_swap',
-  FEE_PERCENTAGE: 0.005,
+  FEE_PERCENTAGE: 0.005, // This is a 0.5% integrator fee
   FEE_COLLECTOR_ADDRESS: '0x34accc793fD8C2A8e262C8C95b18D706bc6022f0',
   WALLETCONNECT_PROJECT_ID: 'dc14d146c0227704322ac9a46aaed7cd',
 };
@@ -83,6 +83,7 @@ const BridgeModal = ({ isOpen, onClose }) => {
   const [useCustomRecipient, setUseCustomRecipient] = useState(false);
   const [showQRScanner, setShowQRScanner] = useState(false);
 
+  const [routes, setRoutes] = useState([]);
   const [selectedRoute, setSelectedRoute] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -133,6 +134,7 @@ const BridgeModal = ({ isOpen, onClose }) => {
   }, [wallet.connected, fromChain, fromToken, loadBalance]);
 
   const loadChainsAndTokens = async () => {
+    // Automatically loads all LI.FI supported chains and tokens upon modal opening.
     try {
       const [chainsRes, tokensRes] = await Promise.all([
         fetch(`${CONFIG.LIFI_API_URL}/chains`),
@@ -207,9 +209,37 @@ const BridgeModal = ({ isOpen, onClose }) => {
     setStep('wallet');
   };
 
+  const handleFromChainChange = (newChainId) => {
+    setFromChain(newChainId);
+    const tokensOnNewChain = getTokensByChain(newChainId);
+    if (tokensOnNewChain.length > 0) {
+      setFromToken(tokensOnNewChain[0].symbol);
+    } else {
+      setFromToken('');
+    }
+  };
+
+  const handleToChainChange = (newChainId) => {
+    setToChain(newChainId);
+    const tokensOnNewChain = getTokensByChain(newChainId);
+    if (tokensOnNewChain.length > 0) {
+      setToToken(tokensOnNewChain[0].symbol);
+    } else {
+      setToToken('');
+    }
+  };
+
   const getQuotes = async () => {
     if (!amount || parseFloat(amount) <= 0) {
       setError('Please enter a valid amount');
+      return;
+    }
+    
+    const fromTokenData = getTokensByChain(fromChain).find(t => t.symbol === fromToken);
+    const toTokenData = getTokensByChain(toChain).find(t => t.symbol === toToken);
+
+    if (!fromTokenData || !toTokenData) {
+      setError('Invalid token selection. Please try again.');
       return;
     }
 
@@ -217,36 +247,49 @@ const BridgeModal = ({ isOpen, onClose }) => {
       setLoading(true);
       setError(null);
 
-      const fromTokenData = getTokensByChain(fromChain).find(t => t.symbol === fromToken);
-      const toTokenData = getTokensByChain(toChain).find(t => t.symbol === toToken);
-
-      if (!fromTokenData || !toTokenData) {
-        throw new Error('Invalid token selection');
-      }
-
-      const params = new URLSearchParams({
-        fromChain: fromChain.toString(),
-        toChain: toChain.toString(),
-        fromToken: fromTokenData.address,
-        toToken: toTokenData.address,
+      const requestBody = {
+        fromChainId: fromChain,
+        toChainId: toChain,
+        fromTokenAddress: fromTokenData.address,
+        toTokenAddress: toTokenData.address,
         fromAmount: window.ethers.utils.parseUnits(amount, fromTokenData.decimals).toString(),
         fromAddress: wallet.address,
-        integrator: CONFIG.LIFI_INTEGRATOR
-      });
+        integrator: CONFIG.LIFI_INTEGRATOR,
+        fee: CONFIG.FEE_PERCENTAGE,
+        feeCollector: CONFIG.FEE_COLLECTOR_ADDRESS
+      };
 
       if (useCustomRecipient && customRecipient && window.ethers.utils.isAddress(customRecipient)) {
-        params.set('toAddress', customRecipient);
+        requestBody.toAddress = customRecipient;
       }
 
-      const response = await fetch(`${CONFIG.LIFI_API_URL}/quote?${params}`);
+      const response = await fetch(`${CONFIG.LIFI_API_URL}/advanced/routes`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestBody),
+      });
+
 
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.message || 'Failed to fetch routes');
       }
 
-      const quote = await response.json();
-      setSelectedRoute(quote);
+      const routesResponse = await response.json();
+      const allRoutes = routesResponse.routes || [];
+
+      // Filter to show only one (the first) route per unique provider to avoid clutter
+      const uniqueRoutesByProvider = new Map();
+      allRoutes.forEach(route => {
+        const providerName = route.steps[0].toolDetails.name;
+        if (!uniqueRoutesByProvider.has(providerName)) {
+            uniqueRoutesByProvider.set(providerName, route);
+        }
+      });
+      
+      setRoutes(Array.from(uniqueRoutesByProvider.values()));
       setStep('routes');
     } catch (err) {
       console.error('Failed to get quotes:', err);
@@ -256,20 +299,21 @@ const BridgeModal = ({ isOpen, onClose }) => {
     }
   };
 
-  const executeSwap = async () => {
-    if (!selectedRoute || !signer) return;
+  const executeSwap = async (route) => {
+    if (!route || !signer) return;
 
     try {
+      setSelectedRoute(route);
       setStep('executing');
       setLoading(true);
       setError(null);
 
       const currentChainId = await signer.getChainId();
-      if (currentChainId !== parseInt(selectedRoute.action.fromChainId)) {
-        await switchNetwork(selectedRoute.action.fromChainId);
+      if (currentChainId !== parseInt(route.fromChainId)) {
+        await switchNetwork(route.fromChainId);
       }
 
-      const tx = await signer.sendTransaction(selectedRoute.transactionRequest);
+      const tx = await signer.sendTransaction(route.transactionRequest);
       setTxHash(tx.hash);
       await tx.wait();
 
@@ -288,7 +332,7 @@ const BridgeModal = ({ isOpen, onClose }) => {
     try {
       await window.ethereum.request({
         method: 'wallet_switchEthereumChain',
-        params: [{ chainId: window.ethers.utils.hexlify(parseInt(chainId)) }],
+        params: [{ chainId: '0x' + parseInt(chainId, 10).toString(16) }],
       });
     } catch (switchError) {
       if (switchError.code === 4902) {
@@ -301,6 +345,7 @@ const BridgeModal = ({ isOpen, onClose }) => {
   const handleClose = () => {
     setStep('wallet');
     setAmount('');
+    setRoutes([]);
     setSelectedRoute(null);
     setError(null);
     setTxHash(null);
@@ -313,6 +358,31 @@ const BridgeModal = ({ isOpen, onClose }) => {
   const amountUSD = amount && selectedFromToken?.priceUSD
     ? (parseFloat(amount) * selectedFromToken.priceUSD).toFixed(2)
     : '0.00';
+
+  const FeeDetails = ({ feeCosts }) => {
+    if (!feeCosts || feeCosts.length === 0) {
+      return null;
+    }
+
+    const totalFeeUSD = feeCosts.reduce((total, fee) => total + parseFloat(fee.amountUSD), 0).toFixed(2);
+
+    return (
+        <div className="text-xs text-gray-400 mt-3 p-3 bg-gray-900/50 rounded-lg border border-gray-700">
+            <div className="flex justify-between font-semibold text-gray-300 mb-1">
+                <span>Total Fees:</span>
+                <span>~${totalFeeUSD}</span>
+            </div>
+            <ul className="space-y-1">
+                {feeCosts.map((fee, index) => (
+                    <li key={`${fee.name}-${index}`} className="flex justify-between items-center text-gray-500">
+                        <span>{fee.name} ({fee.percentage * 100}%)</span>
+                        <span>~${parseFloat(fee.amountUSD).toFixed(2)}</span>
+                    </li>
+                ))}
+            </ul>
+        </div>
+    );
+  };
 
   if (!isOpen) return null;
 
@@ -406,7 +476,7 @@ const BridgeModal = ({ isOpen, onClose }) => {
                   {amount && <p className="text-xs text-gray-400 text-right">~${amountUSD}</p>}
                   <select
                     value={fromChain}
-                    onChange={(e) => setFromChain(parseInt(e.target.value))}
+                    onChange={(e) => handleFromChainChange(parseInt(e.target.value))}
                     className="w-full bg-gray-900 border border-gray-600 text-white rounded-lg px-3 py-2 mt-2 focus:outline-none focus:border-indigo-500"
                   >
                     {chains.map(chain => (
@@ -444,7 +514,7 @@ const BridgeModal = ({ isOpen, onClose }) => {
                   </div>
                   <select
                     value={toChain}
-                    onChange={(e) => setToChain(parseInt(e.target.value))}
+                    onChange={(e) => handleToChainChange(parseInt(e.target.value))}
                     className="w-full bg-gray-900 border border-gray-600 text-white rounded-lg px-3 py-2 mt-2 focus:outline-none focus:border-indigo-500"
                   >
                     {chains.filter(c => c.id !== fromChain).map(chain => (
@@ -490,58 +560,90 @@ const BridgeModal = ({ isOpen, onClose }) => {
                   {loading ? (
                     <>
                       <Loader2 className="w-5 h-5 animate-spin" />
-                      Getting Quote...
+                      Getting Quotes...
                     </>
                   ) : (
-                    'Get Quote'
+                    'Get Quotes'
                   )}
                 </button>
               </div>
             )}
 
-            {step === 'routes' && selectedRoute && (
+            {step === 'routes' && (
               <div className="space-y-4">
                 <button onClick={() => setStep('bridge')} className="text-sm text-gray-400 hover:text-white">
                   ← Back
                 </button>
 
-                <div className="bg-gray-800/50 rounded-xl p-4 border border-indigo-500">
-                  <div className="flex justify-between mb-3">
-                    <div>
-                      <p className="font-semibold text-white">Best Route</p>
-                      <p className="text-xs text-gray-400">
-                        ~{Math.ceil((selectedRoute.estimate?.executionDuration || 180) / 60)} min
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <p className="font-semibold text-green-400">
-                        {parseFloat(window.ethers.utils.formatUnits(
-                          selectedRoute.estimate.toAmount,
-                          selectedRoute.action.toToken.decimals
-                        )).toFixed(6)} {toToken}
-                      </p>
-                      <p className="text-xs text-gray-400">
-                        ${parseFloat(selectedRoute.estimate.gasCostUSD || 0).toFixed(2)} gas
-                      </p>
-                    </div>
-                  </div>
-                </div>
+                <h3 className="text-lg font-semibold text-white">Available Routes</h3>
 
-                <button
-                  onClick={executeSwap}
-                  disabled={loading}
-                  className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-600/50 text-white font-semibold py-3 rounded-xl"
-                >
-                  Execute Bridge
-                </button>
+                {routes.length > 0 ? (
+                  <div className="space-y-3 max-h-[50vh] overflow-y-auto pr-2">
+                    {routes.map((route) => (
+                      <div key={route.id} className="bg-gray-800/50 rounded-xl p-4 border border-gray-700 hover:border-indigo-500 transition-all">
+                        <div className="flex justify-between items-center">
+                          <div>
+                            <p className="font-semibold text-white flex items-center gap-2">
+                              {route.steps[0].toolDetails.name}
+                              <img src={route.steps[0].toolDetails.logoURI} alt={route.steps[0].toolDetails.name} className="w-5 h-5 rounded-full bg-white/10" />
+                            </p>
+                            <p className="text-xs text-gray-400">
+                              ~{Math.ceil((route.estimate?.executionDuration || 180) / 60)} min
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            {(() => {
+                              // Safely get the display amount, falling back from toAmount to toAmountMin
+                              const displayAmount = route.estimate?.toAmount || route.estimate?.toAmountMin || '0';
+                              // Safely resolve the output token, falling back from the last step to the route's root
+                              const outputToken = route.steps?.[route.steps.length - 1]?.action?.toToken || route.toToken;
+                              
+                              if (!outputToken) {
+                                return <p className="font-semibold text-red-400">Data Error</p>;
+                              }
+
+                              return (
+                                <p className="font-semibold text-green-400">
+                                  {parseFloat(
+                                    window.ethers.utils.formatUnits(
+                                      displayAmount,
+                                      outputToken.decimals
+                                    )
+                                  ).toFixed(6)} {outputToken.symbol}
+                                </p>
+                              );
+                            })()}
+                            <p className="text-xs text-gray-400">
+                              ~${parseFloat(route.estimate?.toAmountUSD || '0').toFixed(2)}
+                            </p>
+                          </div>
+                        </div>
+
+                        <FeeDetails feeCosts={route.estimate?.feeCosts || []} />
+
+                        <button
+                          onClick={() => executeSwap(route)}
+                          disabled={loading}
+                          className="w-full mt-4 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-600/50 text-white font-semibold py-2 rounded-lg text-sm"
+                        >
+                          Execute Bridge
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-8 text-gray-400">
+                    <p>No routes found for the selected pair.</p>
+                  </div>
+                )}
               </div>
             )}
 
-            {step === 'executing' && (
+            {step === 'executing' && selectedRoute && (
               <div className="text-center py-12">
                 <Loader2 className="w-16 h-16 text-indigo-400 animate-spin mx-auto mb-6" />
                 <h3 className="text-xl font-semibold mb-2 text-white">Processing...</h3>
-                <p className="text-gray-400">Confirm in your wallet</p>
+                <p className="text-gray-400">Confirm transaction via {selectedRoute.steps[0].toolDetails.name} in your wallet</p>
               </div>
             )}
 
@@ -552,16 +654,20 @@ const BridgeModal = ({ isOpen, onClose }) => {
                 </div>
                 <h3 className="text-xl font-semibold mb-2 text-white">Bridge Initiated!</h3>
                 <p className="text-gray-400 mb-6">Transaction submitted successfully</p>
-                {txHash && (
-                  <a
-                    href={`https://etherscan.io/tx/${txHash}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 text-indigo-400 hover:text-indigo-300 text-sm"
-                  >
-                    View Transaction <ExternalLink className="w-4 h-4" />
-                  </a>
-                )}
+                {txHash && (() => {
+                  const fromChainData = chains.find(c => c.id === fromChain);
+                  const explorerUrl = fromChainData?.metamask?.blockExplorerUrls?.[0] || 'https://etherscan.io';
+                  return (
+                    <a
+                      href={`${explorerUrl}/tx/${txHash}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2 text-indigo-400 hover:text-indigo-300 text-sm"
+                    >
+                      View Transaction <ExternalLink className="w-4 h-4" />
+                    </a>
+                  )
+                })()}
               </div>
             )}
           </div>
@@ -627,3 +733,7 @@ export default function App() {
     </div>
   );
 }
+
+
+
+
