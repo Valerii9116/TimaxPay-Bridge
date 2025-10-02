@@ -357,28 +357,67 @@ const BridgeModal = ({ isOpen, onClose }) => {
     ? (parseFloat(amount) * selectedFromToken.priceUSD).toFixed(2)
     : '0.00';
 
-  const FeeDetails = ({ feeCosts }) => {
-    if (!feeCosts || feeCosts.length === 0) {
-      return null;
-    }
+  // New component for displaying route details in the desired format
+  const RouteDetails = ({ route, chains }) => {
+    if (!route || !window.ethers) return null;
 
-    const totalFeeUSD = feeCosts.reduce((total, fee) => total + parseFloat(fee.amountUSD), 0).toFixed(2);
+    const { estimate, action } = route;
+    const fromToken = action.fromToken;
+    const toToken = action.toToken;
+
+    const fromChainInfo = chains.find(c => c.id === action.fromChainId);
+    const toChainInfo = chains.find(c => c.id === action.toChainId);
+
+    const totalGasUSD = estimate.gasCosts?.reduce((sum, cost) => sum + parseFloat(cost.amountUSD), 0) || 0;
+    
+    // Calculate provider and integrator fees (non-gas fees)
+    const providerAndIntegratorFees = estimate.feeCosts?.filter(fee => fee.type !== 'gas');
+    const totalFeePercentage = providerAndIntegratorFees?.reduce((sum, fee) => sum + parseFloat(fee.percentage), 0) || 0;
+    const totalFeeUSD = providerAndIntegratorFees?.reduce((sum, fee) => sum + parseFloat(fee.amountUSD), 0) || 0;
+
+    const fromAmountFormatted = parseFloat(window.ethers.utils.formatUnits(action.fromAmount, fromToken.decimals));
+    const toAmountFormatted = parseFloat(window.ethers.utils.formatUnits(estimate.toAmount, toToken.decimals));
+    const exchangeRate = toAmountFormatted / fromAmountFormatted;
+
+    // Default price impact to 0.00% instead of N/A for a cleaner look
+    const priceImpact = estimate.priceImpact ? `${(parseFloat(estimate.priceImpact) * 100).toFixed(2)}%` : '0.00%';
 
     return (
-        <div className="text-xs text-gray-400 mt-3 p-3 bg-gray-900/50 rounded-lg border border-gray-700">
-            <div className="flex justify-between font-semibold text-gray-300 mb-1">
-                <span>Total Fees:</span>
-                <span>~${totalFeeUSD}</span>
-            </div>
-            <ul className="space-y-1">
-                {feeCosts.map((fee, index) => (
-                    <li key={`${fee.name}-${index}`} className="flex justify-between items-center text-gray-500">
-                        <span>{fee.name} ({fee.percentage * 100}%)</span>
-                        <span>~${parseFloat(fee.amountUSD).toFixed(2)}</span>
-                    </li>
-                ))}
-            </ul>
+      <div className="text-sm mt-4 p-4 bg-gray-900/50 rounded-2xl border border-gray-700 space-y-3 text-white">
+        <div className="flex justify-between items-center">
+          <span className="text-gray-400">Route</span>
+          <div className="flex items-center gap-2 font-semibold">
+            {fromChainInfo?.logoURI && <img src={fromChainInfo.logoURI} alt={fromChainInfo.name} className="w-5 h-5 rounded-full" />}
+            <span>{fromChainInfo?.name}</span>
+            <span className="text-indigo-400">→</span>
+            {toChainInfo?.logoURI && <img src={toChainInfo.logoURI} alt={toChainInfo.name} className="w-5 h-5 rounded-full" />}
+            <span>{toChainInfo?.name}</span>
+          </div>
         </div>
+        <div className="flex justify-between items-center">
+          <span className="text-gray-400">Network Fee</span>
+          <span>~${totalGasUSD.toFixed(2)}</span>
+        </div>
+        <div className="flex justify-between items-center">
+          <span className="text-gray-400">Time</span>
+          <span>~{Math.ceil(estimate.executionDuration / 60)} min</span>
+        </div>
+         <div className="flex justify-between items-center">
+          <span className="text-gray-400">Quote</span>
+          <span className="font-semibold">{`1 ${fromToken.symbol} = ${exchangeRate.toFixed(4)} ${toToken.symbol}`}</span>
+        </div>
+        <div className="flex justify-between items-center">
+          <span className="text-gray-400">Price Impact</span>
+          <span>{priceImpact}</span>
+        </div>
+         <div className="flex justify-between items-center">
+          <span className="text-gray-400">Slippage</span>
+          <span>0.5%</span> {/* Default value from API */}
+        </div>
+        <div className="pt-2 mt-2 text-center text-xs text-gray-500 border-t border-gray-700/50">
+          Includes {(totalFeePercentage * 100).toFixed(2)}% in Provider & Integrator fees (~${totalFeeUSD.toFixed(2)})
+        </div>
+      </div>
     );
   };
 
@@ -569,65 +608,57 @@ const BridgeModal = ({ isOpen, onClose }) => {
 
             {step === 'routes' && (
               <div className="space-y-4">
-                <button onClick={() => setStep('bridge')} className="text-sm text-gray-400 hover:text-white">
+                 <button onClick={() => setStep('bridge')} className="text-sm text-gray-400 hover:text-white mb-4">
                   ← Back
                 </button>
 
-                <h3 className="text-lg font-semibold text-white">Optimal Route</h3>
-
                 {routes.length > 0 ? (
-                  <div className="space-y-3 max-h-[50vh] overflow-y-auto pr-2">
-                    {routes.map((route) => (
-                      <div key={route.id} className="bg-gray-800/50 rounded-xl p-4 border border-gray-700 hover:border-indigo-500 transition-all">
-                        <div className="flex justify-between items-center">
-                          <div>
-                            <p className="font-semibold text-white flex items-center gap-2">
-                              {route.toolDetails?.name}
-                              <img src={route.toolDetails?.logoURI} alt={route.toolDetails?.name} className="w-5 h-5 rounded-full bg-white/10" />
-                            </p>
-                            <p className="text-xs text-gray-400">
-                              ~{Math.ceil((route.estimate?.executionDuration || 180) / 60)} min
-                            </p>
-                          </div>
-                          <div className="text-right">
-                            {(() => {
-                              const displayAmount = route.estimate?.toAmount || route.estimate?.toAmountMin || '0';
-                              const outputToken = route.action?.toToken;
-                             
-                              if (!outputToken || !window.ethers) {
-                                return <p className="font-semibold text-red-400">Data Error</p>;
-                              }
+                  (() => {
+                    const route = routes[0];
+                    if (!route || !window.ethers) return <p className="text-center text-red-400">Failed to parse route.</p>;
 
-                              const formattedAmount = window.ethers.utils.formatUnits(
-                                displayAmount,
-                                outputToken.decimals
-                              );
-                              const displayValue = Number(parseFloat(formattedAmount).toFixed(8));
+                    const fromAmountFormatted = parseFloat(window.ethers.utils.formatUnits(route.action.fromAmount, route.action.fromToken.decimals)).toFixed(4);
+                    const toAmountFormatted = Number(parseFloat(window.ethers.utils.formatUnits(route.estimate.toAmount, route.action.toToken.decimals)).toFixed(6));
+                    
+                    const shortenAddress = (addr) => addr ? `${addr.slice(0, 6)}...${addr.slice(-4)}` : '';
+                    const fromAddressShort = shortenAddress(wallet.address);
+                    const toAddress = useCustomRecipient && customRecipient ? customRecipient : wallet.address;
+                    const toAddressShort = shortenAddress(toAddress);
 
-                              return (
-                                <p className="font-semibold text-green-400">
-                                  {displayValue} {outputToken.symbol}
-                                </p>
-                              );
-                            })()}
-                            <p className="text-xs text-gray-400">
-                              ~${parseFloat(route.estimate?.toAmountUSD || '0').toFixed(2)}
-                            </p>
+                    return (
+                      <div>
+                        <div className="text-center">
+                          <p className="text-4xl font-bold text-white">{fromAmountFormatted}</p>
+                          <div className="flex items-center justify-center gap-2 mt-1">
+                            <img src={route.action.fromToken.logoURI} alt={route.action.fromToken.symbol} className="w-6 h-6 rounded-full" />
+                            <span className="text-xl font-semibold text-gray-300">{route.action.fromToken.symbol}</span>
                           </div>
+                          <p className="text-sm text-gray-500 mt-1">{fromAddressShort}</p>
+                        </div>
+                        
+                        <div className="flex justify-center my-4"><ArrowDownUp className="w-6 h-6 text-indigo-400" /></div>
+
+                        <div className="text-center">
+                          <p className="text-4xl font-bold text-white">{toAmountFormatted}</p>
+                          <div className="flex items-center justify-center gap-2 mt-1">
+                            <img src={route.action.toToken.logoURI} alt={route.action.toToken.symbol} className="w-6 h-6 rounded-full" />
+                            <span className="text-xl font-semibold text-gray-300">{route.action.toToken.symbol}</span>
+                          </div>
+                          <p className="text-sm text-gray-500 mt-1">{toAddressShort}</p>
                         </div>
 
-                        <FeeDetails feeCosts={route.estimate?.feeCosts || []} />
+                        <RouteDetails route={route} chains={chains} />
 
                         <button
                           onClick={() => executeSwap(route)}
                           disabled={loading}
-                          className="w-full mt-4 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-600/50 text-white font-semibold py-2 rounded-lg text-sm"
+                          className="w-full mt-6 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-600/50 text-white font-semibold py-3 rounded-xl text-lg transition-all"
                         >
-                          Execute Bridge
+                          Execute Bridge via {route.toolDetails.name}
                         </button>
                       </div>
-                    ))}
-                  </div>
+                    );
+                  })()
                 ) : (
                   <div className="text-center py-8 text-gray-400">
                     <p>No routes found for the selected pair.</p>
@@ -730,4 +761,7 @@ export default function App() {
     </div>
   );
 }
+
+
+
 
