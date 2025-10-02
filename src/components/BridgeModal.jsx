@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { X, ArrowDownUp, AlertCircle, ExternalLink, Check, QrCode, Loader2 } from 'lucide-react';
 
 // ⚠️ CONFIGURATION - Replace with your actual values
@@ -19,12 +19,14 @@ const QRScanner = ({ onScan, onClose }) => {
   useEffect(() => {
     startScanner();
     return () => stopScanner();
+    // start/stop scanner only once on mount/unmount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const startScanner = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { facingMode: 'environment' } 
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment' }
       });
       streamRef.current = stream;
       if (videoRef.current) {
@@ -72,7 +74,7 @@ const BridgeModal = ({ isOpen, onClose }) => {
   const [balance, setBalance] = useState('0');
   const [provider, setProvider] = useState(null);
   const [signer, setSigner] = useState(null);
-  
+
   const [chains, setChains] = useState([]);
   const [tokens, setTokens] = useState({});
   const [fromChain, setFromChain] = useState(1);
@@ -83,8 +85,8 @@ const BridgeModal = ({ isOpen, onClose }) => {
   const [customRecipient, setCustomRecipient] = useState('');
   const [useCustomRecipient, setUseCustomRecipient] = useState(false);
   const [showQRScanner, setShowQRScanner] = useState(false);
-  
-  const [routes, setRoutes] = useState([]);
+
+  // removed unused "routes" state, using selectedRoute only
   const [selectedRoute, setSelectedRoute] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -94,13 +96,48 @@ const BridgeModal = ({ isOpen, onClose }) => {
     if (isOpen) {
       loadChainsAndTokens();
     }
+    // only when modal opens/closes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
+
+  // loadBalance inlines token lookup (no external getTokensByChain reference)
+  const loadBalance = useCallback(async () => {
+    if (!provider || !wallet.address) return;
+
+    try {
+      const tokenList = tokens[fromChain] || [];
+      const token = tokenList.find(t => t.symbol === fromToken);
+      if (!token) {
+        setBalance('0');
+        return;
+      }
+
+      let balanceBN;
+      if (!token.address || token.address === window.ethers.constants.AddressZero) {
+        balanceBN = await provider.getBalance(wallet.address);
+      } else {
+        const tokenContract = new window.ethers.Contract(
+          token.address,
+          ['function balanceOf(address) view returns (uint256)'],
+          provider
+        );
+        balanceBN = await tokenContract.balanceOf(wallet.address);
+      }
+
+      const decimals = typeof token.decimals === 'number' ? token.decimals : 18;
+      const bal = window.ethers.utils.formatUnits(balanceBN, decimals);
+      setBalance(parseFloat(bal).toFixed(6));
+    } catch (err) {
+      console.error('Failed to load balance:', err);
+      setBalance('0');
+    }
+  }, [provider, wallet.address, fromChain, fromToken, tokens]);
 
   useEffect(() => {
     if (wallet.connected && fromChain && fromToken) {
       loadBalance();
     }
-  }, [wallet.connected, fromChain, fromToken]);
+  }, [wallet.connected, fromChain, fromToken, loadBalance]);
 
   const loadChainsAndTokens = async () => {
     try {
@@ -114,7 +151,7 @@ const BridgeModal = ({ isOpen, onClose }) => {
 
       setChains(chainsData.chains || []);
       setTokens(tokensData.tokens || {});
-      
+
       if (tokensData.tokens[1]?.length > 0) {
         setFromToken(tokensData.tokens[1][0].symbol);
       }
@@ -163,45 +200,25 @@ const BridgeModal = ({ isOpen, onClose }) => {
     if (accounts.length === 0) {
       disconnectWallet();
     } else {
+      // simplest behavior: reload to refresh signer/provider state
       window.location.reload();
     }
   };
 
   const disconnectWallet = () => {
     if (window.ethereum) {
-      window.ethereum.removeListener('accountsChanged', handleAccountsChanged);
+      try {
+        window.ethereum.removeListener('accountsChanged', handleAccountsChanged);
+        // best-effort remove chainChanged listener (we attached an anonymous reload function earlier)
+        // cannot remove anonymous listener reliably — safe to ignore
+      } catch (err) {
+        // ignore
+      }
     }
     setWallet({ connected: false, address: null, chainId: null });
     setProvider(null);
     setSigner(null);
     setStep('wallet');
-  };
-
-  const loadBalance = async () => {
-    if (!provider || !wallet.address) return;
-    
-    try {
-      const token = getTokensByChain(fromChain).find(t => t.symbol === fromToken);
-      if (!token) return;
-
-      let balanceBN;
-      if (token.address === window.ethers.constants.AddressZero || !token.address) {
-        balanceBN = await provider.getBalance(wallet.address);
-      } else {
-        const tokenContract = new window.ethers.Contract(
-          token.address,
-          ['function balanceOf(address) view returns (uint256)'],
-          provider
-        );
-        balanceBN = await tokenContract.balanceOf(wallet.address);
-      }
-
-      const bal = window.ethers.utils.formatUnits(balanceBN, token.decimals);
-      setBalance(parseFloat(bal).toFixed(6));
-    } catch (err) {
-      console.error('Failed to load balance:', err);
-      setBalance('0');
-    }
   };
 
   const getQuotes = async () => {
@@ -214,8 +231,8 @@ const BridgeModal = ({ isOpen, onClose }) => {
       setLoading(true);
       setError(null);
 
-      const fromTokenData = getTokensByChain(fromChain).find(t => t.symbol === fromToken);
-      const toTokenData = getTokensByChain(toChain).find(t => t.symbol === toToken);
+      const fromTokenData = (tokens[fromChain] || []).find(t => t.symbol === fromToken);
+      const toTokenData = (tokens[toChain] || []).find(t => t.symbol === toToken);
 
       if (!fromTokenData || !toTokenData) {
         throw new Error('Invalid token selection');
@@ -236,14 +253,14 @@ const BridgeModal = ({ isOpen, onClose }) => {
       }
 
       const response = await fetch(`${CONFIG.LIFI_API_URL}/quote?${params}`);
-      
+
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.message || 'Failed to fetch routes');
       }
 
       const quote = await response.json();
-      setRoutes([quote]);
+      // previously stored in "routes" state but not used - keep selectedRoute only
       setSelectedRoute(quote);
       setStep('routes');
     } catch (err) {
@@ -270,7 +287,7 @@ const BridgeModal = ({ isOpen, onClose }) => {
       const tx = await signer.sendTransaction(selectedRoute.transactionRequest);
       setTxHash(tx.hash);
       await tx.wait();
-      
+
       setStep('success');
       setTimeout(() => handleClose(), 5000);
     } catch (err) {
@@ -299,7 +316,7 @@ const BridgeModal = ({ isOpen, onClose }) => {
   const handleClose = () => {
     setStep('wallet');
     setAmount('');
-    setRoutes([]);
+    // removed setRoutes([]) since we don't keep routes state
     setSelectedRoute(null);
     setError(null);
     setTxHash(null);
@@ -313,8 +330,8 @@ const BridgeModal = ({ isOpen, onClose }) => {
   };
 
   const selectedFromToken = getTokensByChain(fromChain).find(t => t.symbol === fromToken);
-  const amountUSD = amount && selectedFromToken?.priceUSD 
-    ? (parseFloat(amount) * selectedFromToken.priceUSD).toFixed(2) 
+  const amountUSD = amount && selectedFromToken?.priceUSD
+    ? (parseFloat(amount) * selectedFromToken.priceUSD).toFixed(2)
     : '0.00';
 
   if (!isOpen) return null;
@@ -354,7 +371,7 @@ const BridgeModal = ({ isOpen, onClose }) => {
                 </div>
                 <h3 className="text-xl font-semibold mb-2 text-white">Connect Your Wallet</h3>
                 <p className="text-gray-400 mb-8">Choose your wallet to start bridging</p>
-                
+
                 <div className="space-y-3">
                   <button
                     onClick={() => connectWallet('metamask')}
@@ -399,7 +416,7 @@ const BridgeModal = ({ isOpen, onClose }) => {
                     <select
                       value={fromToken}
                       onChange={(e) => setFromToken(e.target.value)}
-                      className="bg-gray-900 border border-gray-600 text-white rounded-lg px-3 py-2 focus:outline-none focus:border-indigo-500 min-w-[100px]"
+                      className="w-40 px-3 py-2 rounded-lg bg-gray-900 border border-gray-600 text-white rounded-lg px-3 py-2 focus:outline-none focus:border-indigo-500 min-w-[100px]"
                     >
                       {getTokensByChain(fromChain).map(token => (
                         <option key={token.symbol} value={token.symbol}>{token.symbol}</option>
@@ -410,7 +427,7 @@ const BridgeModal = ({ isOpen, onClose }) => {
                   <select
                     value={fromChain}
                     onChange={(e) => setFromChain(parseInt(e.target.value))}
-                    className="w-full bg-gray-900 border border-gray-600 text-white rounded-lg px-3 py-2 mt-2 focus:outline-none focus:border-indigo-500"
+                    className="w-full py-2 rounded-lg bg-gray-900 border border-gray-600 text-white rounded-lg px-3 py-2 mt-2 focus:outline-none focus:border-indigo-500"
                   >
                     {chains.map(chain => (
                       <option key={chain.id} value={chain.id}>{chain.name}</option>
@@ -433,12 +450,12 @@ const BridgeModal = ({ isOpen, onClose }) => {
                       type="text"
                       readOnly
                       placeholder="0.0"
-                      className="flex-1 bg-gray-900 border border-gray-600 rounded-lg px-4 py-3 text-lg text-gray-500"
+                      className="flex-1 rounded-lg bg-gray-900 border border-gray-600 rounded-lg px-4 py-3 text-lg text-gray-500"
                     />
                     <select
                       value={toToken}
                       onChange={(e) => setToToken(e.target.value)}
-                      className="bg-gray-900 border border-gray-600 text-white rounded-lg px-3 py-2 focus:outline-none focus:border-indigo-500 min-w-[100px]"
+                      className="w-40 px-3 py-2 rounded-lg bg-gray-900 border border-gray-600 text-white rounded-lg px-3 py-2 focus:outline-none focus:border-indigo-500 min-w-[100px]"
                     >
                       {getTokensByChain(toChain).map(token => (
                         <option key={token.symbol} value={token.symbol}>{token.symbol}</option>
@@ -507,7 +524,7 @@ const BridgeModal = ({ isOpen, onClose }) => {
                 <button onClick={() => setStep('bridge')} className="text-sm text-gray-400 hover:text-white">
                   ← Back
                 </button>
-                
+
                 <div className="bg-gray-800/50 rounded-xl p-4 border border-indigo-500">
                   <div className="flex justify-between mb-3">
                     <div>
@@ -623,9 +640,9 @@ export default function App() {
         </div>
       </div>
 
-      <BridgeModal 
-        isOpen={isModalOpen} 
-        onClose={() => setIsModalOpen(false)} 
+      <BridgeModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
       />
     </div>
   );
