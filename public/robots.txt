@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://swap.timaxpay.com/sitemap.xml
