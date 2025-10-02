@@ -76,8 +76,8 @@ const BridgeModal = ({ isOpen, onClose }) => {
   const [tokens, setTokens] = useState({});
   const [fromChain, setFromChain] = useState(1);
   const [toChain, setToChain] = useState(137);
-  const [fromToken, setFromToken] = useState('');
-  const [toToken, setToToken] = useState('');
+  const [fromToken, setFromToken] = useState(''); // Now stores token address
+  const [toToken, setToToken] = useState(''); // Now stores token address
   const [amount, setAmount] = useState('');
   const [customRecipient, setCustomRecipient] = useState('');
   const [useCustomRecipient, setUseCustomRecipient] = useState(false);
@@ -89,21 +89,15 @@ const BridgeModal = ({ isOpen, onClose }) => {
   const [error, setError] = useState(null);
   const [txHash, setTxHash] = useState(null);
 
-  useEffect(() => {
-    if (isOpen) {
-      loadChainsAndTokens();
-    }
-  }, [isOpen]);
-
   const getTokensByChain = useCallback((chainId) => {
     return tokens[chainId] || [];
   }, [tokens]);
 
   const loadBalance = useCallback(async () => {
-    if (!provider || !wallet.address) return;
+    if (!provider || !wallet.address || !fromToken || !window.ethers) return;
 
     try {
-      const token = getTokensByChain(fromChain).find(t => t.symbol === fromToken);
+      const token = getTokensByChain(fromChain).find(t => t.address === fromToken);
       if (!token) return;
 
       let balanceBN;
@@ -126,6 +120,36 @@ const BridgeModal = ({ isOpen, onClose }) => {
     }
   }, [provider, wallet.address, fromChain, fromToken, getTokensByChain]);
 
+  useEffect(() => {
+    const loadChainsAndTokens = async () => {
+      try {
+        const [chainsRes, tokensRes] = await Promise.all([
+          fetch(`${CONFIG.LIFI_API_URL}/chains`),
+          fetch(`${CONFIG.LIFI_API_URL}/tokens`)
+        ]);
+
+        const chainsData = await chainsRes.json();
+        const tokensData = await tokensRes.json();
+
+        setChains(chainsData.chains || []);
+        setTokens(tokensData.tokens || {});
+
+        if (tokensData.tokens[1]?.length > 0) {
+          setFromToken(tokensData.tokens[1][0].address);
+        }
+        if (tokensData.tokens[137]?.length > 0) {
+          setToToken(tokensData.tokens[137][0].address);
+        }
+      } catch (err) {
+        console.error('Failed to load chains/tokens:', err);
+        setError('Failed to load network data');
+      }
+    };
+
+    if (isOpen) {
+      loadChainsAndTokens();
+    }
+  }, [isOpen]);
 
   useEffect(() => {
     if (wallet.connected && fromChain && fromToken) {
@@ -133,40 +157,14 @@ const BridgeModal = ({ isOpen, onClose }) => {
     }
   }, [wallet.connected, fromChain, fromToken, loadBalance]);
 
-  const loadChainsAndTokens = async () => {
-    // Automatically loads all LI.FI supported chains and tokens upon modal opening.
-    try {
-      const [chainsRes, tokensRes] = await Promise.all([
-        fetch(`${CONFIG.LIFI_API_URL}/chains`),
-        fetch(`${CONFIG.LIFI_API_URL}/tokens`)
-      ]);
-
-      const chainsData = await chainsRes.json();
-      const tokensData = await tokensRes.json();
-
-      setChains(chainsData.chains || []);
-      setTokens(tokensData.tokens || {});
-
-      if (tokensData.tokens[1]?.length > 0) {
-        setFromToken(tokensData.tokens[1][0].symbol);
-      }
-      if (tokensData.tokens[137]?.length > 0) {
-        setToToken(tokensData.tokens[137][0].symbol);
-      }
-    } catch (err) {
-      console.error('Failed to load chains/tokens:', err);
-      setError('Failed to load network data');
-    }
-  };
-
   const connectWallet = async (walletType = 'metamask') => {
     try {
       setLoading(true);
       setError(null);
 
       if (walletType === 'metamask') {
-        if (!window.ethereum) {
-          throw new Error('MetaMask is not installed');
+        if (!window.ethereum || !window.ethers) {
+          throw new Error('MetaMask or Ethers.js is not available. Please ensure it is installed and enabled.');
         }
         await window.ethereum.request({ method: 'eth_requestAccounts' });
         const ethersProvider = new window.ethers.providers.Web3Provider(window.ethereum, 'any');
@@ -209,11 +207,22 @@ const BridgeModal = ({ isOpen, onClose }) => {
     setStep('wallet');
   };
 
+  const handleSwapChains = () => {
+    // Swap chains and tokens
+    const tempChain = fromChain;
+    setFromChain(toChain);
+    setToChain(tempChain);
+
+    const tempToken = fromToken;
+    setFromToken(toToken);
+    setToToken(tempToken);
+  };
+
   const handleFromChainChange = (newChainId) => {
     setFromChain(newChainId);
     const tokensOnNewChain = getTokensByChain(newChainId);
     if (tokensOnNewChain.length > 0) {
-      setFromToken(tokensOnNewChain[0].symbol);
+      setFromToken(tokensOnNewChain[0].address);
     } else {
       setFromToken('');
     }
@@ -223,73 +232,62 @@ const BridgeModal = ({ isOpen, onClose }) => {
     setToChain(newChainId);
     const tokensOnNewChain = getTokensByChain(newChainId);
     if (tokensOnNewChain.length > 0) {
-      setToToken(tokensOnNewChain[0].symbol);
+      setToToken(tokensOnNewChain[0].address);
     } else {
       setToToken('');
     }
   };
+
+  const fromTokenData = getTokensByChain(fromChain).find(t => t.address === fromToken);
+  const toTokenData = getTokensByChain(toChain).find(t => t.address === toToken);
 
   const getQuotes = async () => {
     if (!amount || parseFloat(amount) <= 0) {
       setError('Please enter a valid amount');
       return;
     }
-    
-    const fromTokenData = getTokensByChain(fromChain).find(t => t.symbol === fromToken);
-    const toTokenData = getTokensByChain(toChain).find(t => t.symbol === toToken);
-
+   
     if (!fromTokenData || !toTokenData) {
-      setError('Invalid token selection. Please try again.');
+      setError('Token data is not yet loaded. Please wait a moment and try again.');
       return;
+    }
+   
+    if (!window.ethers) {
+        setError('Ethers.js library is not available.');
+        return;
     }
 
     try {
       setLoading(true);
       setError(null);
 
-      const requestBody = {
-        fromChainId: fromChain,
-        toChainId: toChain,
-        fromTokenAddress: fromTokenData.address,
-        toTokenAddress: toTokenData.address,
+      const params = new URLSearchParams({
+        fromChain: fromChain,
+        toChain: toChain,
+        fromToken: fromTokenData.symbol,
+        toToken: toTokenData.symbol,
         fromAmount: window.ethers.utils.parseUnits(amount, fromTokenData.decimals).toString(),
         fromAddress: wallet.address,
         integrator: CONFIG.LIFI_INTEGRATOR,
         fee: CONFIG.FEE_PERCENTAGE,
-        feeCollector: CONFIG.FEE_COLLECTOR_ADDRESS
-      };
-
-      if (useCustomRecipient && customRecipient && window.ethers.utils.isAddress(customRecipient)) {
-        requestBody.toAddress = customRecipient;
-      }
-
-      const response = await fetch(`${CONFIG.LIFI_API_URL}/advanced/routes`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestBody),
       });
 
+      if (useCustomRecipient && customRecipient && window.ethers.utils.isAddress(customRecipient)) {
+        params.append('toAddress', customRecipient);
+      }
+     
+      console.log(`Request URL sent to LI.FI: ${CONFIG.LIFI_API_URL}/quote?${params.toString()}`);
+
+      const response = await fetch(`${CONFIG.LIFI_API_URL}/quote?${params.toString()}`);
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.message || 'Failed to fetch routes');
+        throw new Error(errorData.message || 'Failed to fetch quote');
       }
 
-      const routesResponse = await response.json();
-      const allRoutes = routesResponse.routes || [];
-
-      // Filter to show only one (the first) route per unique provider to avoid clutter
-      const uniqueRoutesByProvider = new Map();
-      allRoutes.forEach(route => {
-        const providerName = route.steps[0].toolDetails.name;
-        if (!uniqueRoutesByProvider.has(providerName)) {
-            uniqueRoutesByProvider.set(providerName, route);
-        }
-      });
-      
-      setRoutes(Array.from(uniqueRoutesByProvider.values()));
+      const quoteResponse = await response.json();
+      // A valid quote response will have a transactionRequest, an error response will not.
+      setRoutes(quoteResponse.transactionRequest ? [quoteResponse] : []);
       setStep('routes');
     } catch (err) {
       console.error('Failed to get quotes:', err);
@@ -309,8 +307,8 @@ const BridgeModal = ({ isOpen, onClose }) => {
       setError(null);
 
       const currentChainId = await signer.getChainId();
-      if (currentChainId !== parseInt(route.fromChainId)) {
-        await switchNetwork(route.fromChainId);
+      if (currentChainId !== parseInt(route.action.fromChainId)) {
+        await switchNetwork(route.action.fromChainId);
       }
 
       const tx = await signer.sendTransaction(route.transactionRequest);
@@ -353,8 +351,8 @@ const BridgeModal = ({ isOpen, onClose }) => {
     setCustomRecipient('');
     onClose();
   };
-
-  const selectedFromToken = getTokensByChain(fromChain).find(t => t.symbol === fromToken);
+ 
+  const selectedFromToken = getTokensByChain(fromChain).find(t => t.address === fromToken);
   const amountUSD = amount && selectedFromToken?.priceUSD
     ? (parseFloat(amount) * selectedFromToken.priceUSD).toFixed(2)
     : '0.00';
@@ -469,7 +467,7 @@ const BridgeModal = ({ isOpen, onClose }) => {
                       className="bg-gray-900 border border-gray-600 text-white rounded-lg px-3 py-2 focus:outline-none focus:border-indigo-500 min-w-[100px]"
                     >
                       {getTokensByChain(fromChain).map(token => (
-                        <option key={token.symbol} value={token.symbol}>{token.symbol}</option>
+                        <option key={token.address} value={token.address}>{token.symbol}</option>
                       ))}
                     </select>
                   </div>
@@ -486,7 +484,7 @@ const BridgeModal = ({ isOpen, onClose }) => {
                 </div>
 
                 <div className="flex justify-center -my-2">
-                  <button className="bg-gray-800 border-2 border-gray-700 rounded-full p-2 hover:rotate-180 transition-transform duration-300">
+                  <button onClick={handleSwapChains} className="bg-gray-800 border-2 border-gray-700 rounded-full p-2 hover:rotate-180 transition-transform duration-300">
                     <ArrowDownUp className="w-5 h-5 text-indigo-400" />
                   </button>
                 </div>
@@ -508,7 +506,7 @@ const BridgeModal = ({ isOpen, onClose }) => {
                       className="bg-gray-900 border border-gray-600 text-white rounded-lg px-3 py-2 focus:outline-none focus:border-indigo-500 min-w-[100px]"
                     >
                       {getTokensByChain(toChain).map(token => (
-                        <option key={token.symbol} value={token.symbol}>{token.symbol}</option>
+                        <option key={token.address} value={token.address}>{token.symbol}</option>
                       ))}
                     </select>
                   </div>
@@ -554,7 +552,7 @@ const BridgeModal = ({ isOpen, onClose }) => {
 
                 <button
                   onClick={getQuotes}
-                  disabled={!amount || parseFloat(amount) <= 0 || loading}
+                  disabled={!amount || parseFloat(amount) <= 0 || loading || !fromTokenData || !toTokenData}
                   className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-600/50 text-white font-semibold py-3 rounded-xl transition-all mt-6 flex items-center justify-center gap-2"
                 >
                   {loading ? (
@@ -575,7 +573,7 @@ const BridgeModal = ({ isOpen, onClose }) => {
                   ← Back
                 </button>
 
-                <h3 className="text-lg font-semibold text-white">Available Routes</h3>
+                <h3 className="text-lg font-semibold text-white">Optimal Route</h3>
 
                 {routes.length > 0 ? (
                   <div className="space-y-3 max-h-[50vh] overflow-y-auto pr-2">
@@ -584,8 +582,8 @@ const BridgeModal = ({ isOpen, onClose }) => {
                         <div className="flex justify-between items-center">
                           <div>
                             <p className="font-semibold text-white flex items-center gap-2">
-                              {route.steps[0].toolDetails.name}
-                              <img src={route.steps[0].toolDetails.logoURI} alt={route.steps[0].toolDetails.name} className="w-5 h-5 rounded-full bg-white/10" />
+                              {route.toolDetails?.name}
+                              <img src={route.toolDetails?.logoURI} alt={route.toolDetails?.name} className="w-5 h-5 rounded-full bg-white/10" />
                             </p>
                             <p className="text-xs text-gray-400">
                               ~{Math.ceil((route.estimate?.executionDuration || 180) / 60)} min
@@ -593,23 +591,22 @@ const BridgeModal = ({ isOpen, onClose }) => {
                           </div>
                           <div className="text-right">
                             {(() => {
-                              // Safely get the display amount, falling back from toAmount to toAmountMin
                               const displayAmount = route.estimate?.toAmount || route.estimate?.toAmountMin || '0';
-                              // Safely resolve the output token, falling back from the last step to the route's root
-                              const outputToken = route.steps?.[route.steps.length - 1]?.action?.toToken || route.toToken;
-                              
-                              if (!outputToken) {
+                              const outputToken = route.action?.toToken;
+                             
+                              if (!outputToken || !window.ethers) {
                                 return <p className="font-semibold text-red-400">Data Error</p>;
                               }
 
+                              const formattedAmount = window.ethers.utils.formatUnits(
+                                displayAmount,
+                                outputToken.decimals
+                              );
+                              const displayValue = Number(parseFloat(formattedAmount).toFixed(8));
+
                               return (
                                 <p className="font-semibold text-green-400">
-                                  {parseFloat(
-                                    window.ethers.utils.formatUnits(
-                                      displayAmount,
-                                      outputToken.decimals
-                                    )
-                                  ).toFixed(6)} {outputToken.symbol}
+                                  {displayValue} {outputToken.symbol}
                                 </p>
                               );
                             })()}
@@ -643,7 +640,7 @@ const BridgeModal = ({ isOpen, onClose }) => {
               <div className="text-center py-12">
                 <Loader2 className="w-16 h-16 text-indigo-400 animate-spin mx-auto mb-6" />
                 <h3 className="text-xl font-semibold mb-2 text-white">Processing...</h3>
-                <p className="text-gray-400">Confirm transaction via {selectedRoute.steps[0].toolDetails.name} in your wallet</p>
+                <p className="text-gray-400">Confirm transaction via {selectedRoute.toolDetails?.name} in your wallet</p>
               </div>
             )}
 
@@ -733,7 +730,4 @@ export default function App() {
     </div>
   );
 }
-
-
-
 
