@@ -1,9 +1,8 @@
 import React, { useState } from 'react';
-import { WagmiConfig, QueryClientProvider, queryClient, config } from './config/wagmi';
 import BridgeModal from './components/BridgeModal';
 import './App.css';
 
-function AppContent() {
+function App() {
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   const openModal = () => setIsModalOpen(true);
@@ -54,16 +53,6 @@ function AppContent() {
         onClose={closeModal}
       />
     </>
-  );
-}
-
-function App() {
-  return (
-    <WagmiConfig config={config}>
-      <QueryClientProvider client={queryClient}>
-        <AppContent />
-      </QueryClientProvider>
-    </WagmiConfig>
   );
 }
 
