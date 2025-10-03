@@ -1,69 +1,90 @@
 import React from 'react';
 import { LiFiWidget } from '@lifi/widget';
 import { X } from 'lucide-react';
-
-// This is the official LI.FI Widget configuration.
-// It will handle all wallet interactions, network switching, and transactions.
-// eslint-disable-next-line no-unused-vars
-const widgetConfig = {
-  integrator: 'Timax_swap',
-  
-  fee: {
-    amount: 0.005, // Represents 0.5%
-    recipient: '0x34accc793fD8C2A8e262C8C95b18D706bc6022f0',
-  },
-
-  containerStyle: {
-    border: `1px solid rgb(55, 65, 81)`,
-    borderRadius: '16px',
-  },
-  theme: {
-    palette: {
-      primary: { main: '#6366f1' },
-      secondary: { main: '#a855f7' },
-      background: {
-        paper: '#1f2937', // bg-gray-800
-        default: '#111827', // bg-gray-900
-      },
-      text: {
-          primary: '#ffffff',
-          secondary: '#d1d5db', // text-gray-300
-      },
-    },
-    shape: {
-      borderRadius: '12px',
-      borderRadiusSecondary: '12px',
-    },
-    typography: {
-        fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-    }
-  },
-  appearance: 'dark',
-};
-
+import { useAccount, useWalletClient } from 'wagmi';
+import { useMemo } from 'react';
 
 const BridgeModal = ({ isOpen, onClose }) => {
+  const { address, isConnected } = useAccount();
+  const { data: walletClient } = useWalletClient();
+
+  const widgetConfig = useMemo(() => {
+    const config = {
+      integrator: 'Timax_swap',
+      containerStyle: {
+        border: `1px solid rgb(55, 65, 81)`,
+        borderRadius: '16px',
+      },
+      theme: {
+        palette: {
+          primary: { main: '#6366f1' },
+          secondary: { main: '#a855f7' },
+          background: {
+            paper: '#1f2937',
+            default: '#111827',
+          },
+          text: {
+            primary: '#ffffff',
+            secondary: '#d1d5db',
+          },
+        },
+        shape: {
+          borderRadius: '12px',
+          borderRadiusSecondary: '12px',
+        },
+        typography: {
+          fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+        }
+      },
+      appearance: 'dark',
+      // Add variant for better mobile experience
+      variant: 'expandable',
+      // Configure supported chains (add more as needed)
+      chains: {
+        allow: [1, 10, 56, 137, 250, 8453, 42161, 43114], // Ethereum, Optimism, BSC, Polygon, Fantom, Base, Arbitrum, Avalanche
+      },
+      // WalletConnect configuration
+      walletConfig: {
+        walletConnect: {
+          projectId: 'dc14d146c0227704322ac9a46aaed7cd', // Replace with your actual WalletConnect Project ID
+        },
+      },
+    };
+
+    // If wallet is already connected via Web3Modal, pass it to the widget
+    if (isConnected && walletClient) {
+      config.walletManagement = {
+        signer: walletClient,
+        connect: async () => {
+          console.log('Wallet already connected');
+        },
+        disconnect: async () => {
+          console.log('Disconnect handled by parent app');
+        },
+      };
+    }
+
+    return config;
+  }, [isConnected, walletClient]);
+
   if (!isOpen) return null;
 
   return (
-    // ✨ FIX: Changed flex centering to be scrollable and aligned to the top.
-    // This ensures the modal is never cut off on smaller screens.
-    <div className="fixed inset-0 z-50 overflow-y-auto p-4 py-8 flex justify-center items-start">
-      <div className="relative w-full max-w-md">
-        {/* We use a custom close button so it's styled like the rest of your app */}
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+      <div className="relative w-full max-w-md max-h-[90vh] flex flex-col">
         <button
           onClick={onClose}
-          className="absolute -top-2 -right-2 z-10 p-1.5 bg-gray-800 rounded-full text-gray-400 hover:text-white hover:bg-gray-700 transition-colors"
+          className="absolute -top-3 -right-3 z-[60] p-1.5 bg-gray-800 rounded-full text-gray-400 hover:text-white hover:bg-gray-700 transition-colors shadow-lg"
         >
           <X className="w-5 h-5" />
         </button>
         
-        {/* The official LI.FI Widget */}
-        <LiFiWidget config={widgetConfig} />
+        <div className="overflow-auto rounded-2xl">
+          <LiFiWidget config={widgetConfig} />
+        </div>
       </div>
     </div>
   );
 };
 
 export default BridgeModal;
-
