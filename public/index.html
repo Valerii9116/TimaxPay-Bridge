@@ -3,9 +3,12 @@
   <head>
     <meta charset="utf-8" />
     <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
-    <meta name="theme-color" content="#4f46e5" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="description" content="Cross-chain bridge powered by LI.FI - Seamlessly bridge assets across multiple blockchains" />
+    
+    <!-- Theming -->
+    <meta name="theme-color" content="#4f46e5" media="(prefers-color-scheme: light)">
+    <meta name="theme-color" content="#1f2937" media="(prefers-color-scheme: dark)">
     
     <!-- Mobile Web App -->
     <meta name="mobile-web-app-capable" content="yes">
@@ -21,10 +24,5 @@
   <body>
     <noscript>You need to enable JavaScript to run this app.</noscript>
     <div id="root"></div>
-    
-    <!-- Load Ethers.js and WalletConnect Provider -->
-    <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
-    <script src="https://unpkg.com/@walletconnect/web3-provider@1.8.0/dist/umd/index.min.js"></script>
   </body>
 </html>
-
