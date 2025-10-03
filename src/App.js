@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import BridgeModal from './components/BridgeModal';
 import './App.css';
 
+// This is the main App component. It's now only responsible for the main page UI
+// and for showing or hiding the BridgeModal.
 function App() {
   const [isModalOpen, setIsModalOpen] = useState(false);
 
@@ -24,6 +26,7 @@ function App() {
             </p>
           </div>
 
+          {/* This button now simply opens the modal. */}
           <button
             onClick={openModal}
             className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-8 py-4 rounded-xl transition-all transform hover:scale-105 shadow-lg shadow-indigo-500/50 text-lg"

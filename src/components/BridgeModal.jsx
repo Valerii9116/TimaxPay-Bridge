@@ -3,12 +3,11 @@ import { LiFiWidget } from '@lifi/widget';
 import { X } from 'lucide-react';
 
 // This is the official LI.FI Widget configuration.
-// By removing 'hiddenUI', we are letting the widget manage its own wallet connections.
+// It will handle all wallet interactions, network switching, and transactions.
 // eslint-disable-next-line no-unused-vars
 const widgetConfig = {
   integrator: 'Timax_swap',
   
-  // Re-added your integrator fee configuration
   fee: {
     amount: 0.005, // Represents 0.5%
     recipient: '0x34accc793fD8C2A8e262C8C95b18D706bc6022f0',
@@ -47,7 +46,9 @@ const BridgeModal = ({ isOpen, onClose }) => {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+    // ✨ FIX: Changed flex centering to be scrollable and aligned to the top.
+    // This ensures the modal is never cut off on smaller screens.
+    <div className="fixed inset-0 z-50 overflow-y-auto p-4 py-8 flex justify-center items-start">
       <div className="relative w-full max-w-md">
         {/* We use a custom close button so it's styled like the rest of your app */}
         <button
