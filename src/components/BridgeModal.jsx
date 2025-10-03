@@ -1,11 +1,10 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { LiFiWidget } from '@lifi/widget';
 import { X } from 'lucide-react';
 import { useAccount, useWalletClient } from 'wagmi';
-import { useMemo } from 'react';
 
 const BridgeModal = ({ isOpen, onClose }) => {
-  const { address, isConnected } = useAccount();
+  const { isConnected } = useAccount();
   const { data: walletClient } = useWalletClient();
 
   const widgetConfig = useMemo(() => {
@@ -37,21 +36,17 @@ const BridgeModal = ({ isOpen, onClose }) => {
         }
       },
       appearance: 'dark',
-      // Add variant for better mobile experience
       variant: 'expandable',
-      // Configure supported chains (add more as needed)
       chains: {
-        allow: [1, 10, 56, 137, 250, 8453, 42161, 43114], // Ethereum, Optimism, BSC, Polygon, Fantom, Base, Arbitrum, Avalanche
+        allow: [1, 10, 56, 137, 250, 8453, 42161, 43114],
       },
-      // WalletConnect configuration
       walletConfig: {
         walletConnect: {
-          projectId: 'dc14d146c0227704322ac9a46aaed7cd', // Replace with your actual WalletConnect Project ID
+          projectId: 'dc14d146c0227704322ac9a46aaed7cd',
         },
       },
     };
 
-    // If wallet is already connected via Web3Modal, pass it to the widget
     if (isConnected && walletClient) {
       config.walletManagement = {
         signer: walletClient,
