@@ -8,8 +8,8 @@ const projectId = 'dc14d146c0227704322ac9a46aaed7cd';
 const metadata = {
   name: 'TimaxPay Bridge',
   description: 'Cross-chain bridge powered by LI.FI',
-  url: 'https://swap.timaxpay.com', // Your production URL
-  icons: ['https://swap.timaxpay.com/logo192.png']
+  url: 'https://swap.timaxpay.com', // Must match domain in WalletConnect Cloud
+  icons: ['https://swap.timaxpay.com/logo192.png'] // This should be an absolute URL
 };
 
 const chains = [mainnet, polygon, arbitrum, optimism, base, bsc, avalanche];
@@ -19,8 +19,6 @@ export const wagmiConfig = defaultWagmiConfig({
   chains,
   projectId,
   metadata,
-  enableCoinbase: true, // Optional: Shows Coinbase Wallet option
-  enableInjected: true, // Optional: Enables MetaMask and other browser extensions
 });
 
 // 3. Create Web3Modal
