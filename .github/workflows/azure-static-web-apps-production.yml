@@ -19,9 +19,24 @@ jobs:
         with:
           submodules: true
           lfs: false
-          
-      - name: Build And Deploy
-        id: builddeploy
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+      
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps
+      
+      - name: Build application
+        run: npm run build
+        env:
+          CI: false
+          REACT_APP_LIFI_API_URL: ${{ secrets.REACT_APP_LIFI_API_URL }}
+          REACT_APP_LIFI_INTEGRATOR: ${{ secrets.REACT_APP_LIFI_INTEGRATOR }}
+          REACT_APP_WALLETCONNECT_PROJECT_ID: ${{ secrets.REACT_APP_WALLETCONNECT_PROJECT_ID }}
+      
+      - name: Deploy to Azure Static Web Apps
         uses: Azure/static-web-apps-deploy@v1
         with:
           azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN_NICE_PLANT_0BFE1240F }}
@@ -30,12 +45,7 @@ jobs:
           app_location: "/"
           api_location: ""
           output_location: "build"
-        env:
-          REACT_APP_LIFI_API_URL: ${{ secrets.REACT_APP_LIFI_API_URL }}
-          REACT_APP_LIFI_INTEGRATOR: ${{ secrets.REACT_APP_LIFI_INTEGRATOR }}
-          REACT_APP_FEE_PERCENTAGE: ${{ secrets.REACT_APP_FEE_PERCENTAGE }}
-          REACT_APP_FEE_COLLECTOR: ${{ secrets.REACT_APP_FEE_COLLECTOR }}
-          REACT_APP_WALLETCONNECT_PROJECT_ID: ${{ secrets.REACT_APP_WALLETCONNECT_PROJECT_ID }}
+          skip_app_build: true
 
   close_pull_request_job:
     if: github.event_name == 'pull_request' && github.event.action == 'closed'
@@ -43,7 +53,6 @@ jobs:
     name: Close Pull Request Job
     steps:
       - name: Close Pull Request
-        id: closepullrequest
         uses: Azure/static-web-apps-deploy@v1
         with:
           azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN_NICE_PLANT_0BFE1240F }}
