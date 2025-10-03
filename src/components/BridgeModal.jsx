@@ -10,9 +10,16 @@ const BridgeModal = ({ isOpen, onClose }) => {
   const widgetConfig = useMemo(() => {
     const config = {
       integrator: 'Timax_swap',
+      // Integrator fee configuration
+      fee: {
+        amount: 0.005, // 0.5% fee
+        recipient: '0x34accc793fD8C2A8e262C8C95b18D706bc6022f0',
+      },
       containerStyle: {
         border: `1px solid rgb(55, 65, 81)`,
         borderRadius: '16px',
+        minHeight: '550px',
+        maxHeight: '85vh',
       },
       theme: {
         palette: {
@@ -36,7 +43,7 @@ const BridgeModal = ({ isOpen, onClose }) => {
         }
       },
       appearance: 'dark',
-      variant: 'expandable',
+      variant: 'compact',
       chains: {
         allow: [1, 10, 56, 137, 250, 8453, 42161, 43114],
       },
@@ -45,6 +52,8 @@ const BridgeModal = ({ isOpen, onClose }) => {
           projectId: 'dc14d146c0227704322ac9a46aaed7cd',
         },
       },
+      // Show wallet management and hide only appearance selector
+      hiddenUI: ['appearance', 'poweredBy'],
     };
 
     if (isConnected && walletClient) {
@@ -66,7 +75,7 @@ const BridgeModal = ({ isOpen, onClose }) => {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-      <div className="relative w-full max-w-md max-h-[90vh] flex flex-col">
+      <div className="relative w-full max-w-[420px]">
         <button
           onClick={onClose}
           className="absolute -top-3 -right-3 z-[60] p-1.5 bg-gray-800 rounded-full text-gray-400 hover:text-white hover:bg-gray-700 transition-colors shadow-lg"
@@ -74,7 +83,7 @@ const BridgeModal = ({ isOpen, onClose }) => {
           <X className="w-5 h-5" />
         </button>
         
-        <div className="overflow-auto rounded-2xl">
+        <div className="rounded-2xl overflow-hidden">
           <LiFiWidget config={widgetConfig} />
         </div>
       </div>
