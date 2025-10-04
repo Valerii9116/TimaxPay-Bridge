@@ -1,4 +1,4 @@
-import React, { useMemo, useEffect } from 'react';
+import React, { useMemo } from 'react';
 import { LiFiWidget } from '@lifi/widget';
 import { X, Loader2 } from 'lucide-react';
 import { useWeb3Modal } from '@web3modal/wagmi/react';
@@ -27,56 +27,71 @@ const BridgeModal = ({ isOpen, onClose }) => {
 
   const signer = useMemo(() => walletClientToSigner(walletClient), [walletClient]);
 
-  useEffect(() => {
-    console.log('Widget state:', {
-      isConnected,
-      address,
-      chain: chain?.id,
-      hasSigner: !!signer,
-      hasWalletClient: !!walletClient
-    });
-  }, [isConnected, address, chain, signer, walletClient]);
-
   const widgetConfig = useMemo(() => {
     const config = {
       integrator: 'Timax_swap',
+      
+      // Integrator fee configuration (0.5%)
+      fee: 0.005,
+      
+      // Compact variant with full height
+      variant: 'compact',
+      subvariant: 'split',
+      
       containerStyle: {
         border: `1px solid rgb(55, 65, 81)`,
         borderRadius: '16px',
+        height: '680px',
       },
+
       theme: {
         palette: {
           primary: { main: '#6366f1' },
           secondary: { main: '#a855f7' },
-          background: { paper: '#1f2937', default: '#111827' },
-          text: { primary: '#ffffff', secondary: '#d1d5db' },
+          background: { 
+            paper: '#1f2937', 
+            default: '#111827' 
+          },
+          text: { 
+            primary: '#ffffff', 
+            secondary: '#d1d5db' 
+          },
         },
         shape: { 
-          borderRadius: 12,  // Changed from '12px' to 12
-          borderRadiusSecondary: 12  // Changed from '12px' to 12
+          borderRadius: 12,
+          borderRadiusSecondary: 12
         },
         typography: { 
           fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif' 
         }
       },
+      
       appearance: 'dark',
-      variant: 'expandable',
+      
+      // Hide language selector and theme toggle
+      hiddenUI: ['language', 'appearance'],
+      
+      // SDK configuration
+      sdkConfig: {
+        defaultRouteOptions: {
+          fee: 0.005, // 0.5% integrator fee
+          integrator: 'Timax_swap',
+        },
+      },
     };
 
     if (signer && address) {
       config.walletManagement = {
         signer,
         connect: async () => {
-          console.log('Widget requesting connection');
           await open();
         },
         disconnect: async () => {
-          console.log('Widget requesting disconnect');
+          // Handled by Web3Modal
         },
       };
     }
 
-    console.log('Widget config:', config);
     return config;
   }, [signer, address, open]);
 
@@ -87,15 +102,37 @@ const BridgeModal = ({ isOpen, onClose }) => {
       <div className="relative w-full max-w-md">
         <button
           onClick={onClose}
-          className="absolute -top-2 -right-2 z-10 p-1.5 bg-gray-800 rounded-full text-gray-400 hover:text-white hover:bg-gray-700 transition-colors"
+          className="absolute -top-2 -right-2 z-10 p-1.5 bg-gray-800 rounded-full text-gray-400 hover:text-white hover:bg-gray-700 transition-colors shadow-lg"
         >
           <X className="w-5 h-5" />
         </button>
+
+        {/* Connected wallet info */}
+        {isConnected && address && (
+          <div className="mb-3 px-4 py-3 bg-gradient-to-r from-indigo-600/20 to-purple-600/20 rounded-xl border border-indigo-500/30 backdrop-blur-sm">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+                <span className="text-xs text-gray-400">Connected</span>
+              </div>
+              <div className="flex items-center gap-2">
+                {chain && (
+                  <span className="text-xs text-indigo-400 font-medium">
+                    {chain.name}
+                  </span>
+                )}
+                <span className="text-sm text-white font-mono">
+                  {address.slice(0, 6)}...{address.slice(-4)}
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
         
         {isConnected && signer ? (
           <LiFiWidget config={widgetConfig} key={address} />
         ) : isConnected && !signer ? (
-          <div className="bg-gradient-to-br from-gray-900 to-gray-800 rounded-2xl border border-gray-700 p-6 h-[600px] flex items-center justify-center">
+          <div className="bg-gradient-to-br from-gray-900 to-gray-800 rounded-2xl border border-gray-700 p-6 h-[680px] flex items-center justify-center">
              <Loader2 className="w-12 h-12 text-indigo-400 animate-spin" />
           </div>
         ) : (
