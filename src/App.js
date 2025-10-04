@@ -7,7 +7,7 @@ import { useAccount, useDisconnect } from 'wagmi';
 function App() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   
-  // ✨ FIX: Re-added the wallet management hooks to the main App component.
+  // ✨ FIX: The main App component is now the single source of truth for wallet state.
   const { open } = useWeb3Modal();
   const { address, isConnected } = useAccount();
   const { disconnect } = useDisconnect();
@@ -18,8 +18,7 @@ function App() {
   return (
     <>
       <div className="App min-h-screen bg-gradient-to-br from-gray-900 via-indigo-900 to-purple-900 flex items-center justify-center p-4">
-        {/* ✨ FIX: Restored the main wallet connect/disconnect button. */}
-        {/* This gives users a clear and persistent way to manage their wallet. */}
+        {/* ✨ FIX: A persistent, global wallet button provides the best UX. */}
         <div className="absolute top-6 right-6">
           {isConnected ? (
             <div className="flex items-center gap-4 bg-gray-800/50 p-2 rounded-lg backdrop-blur-sm border border-gray-700">

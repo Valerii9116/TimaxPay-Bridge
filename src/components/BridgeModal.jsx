@@ -1,12 +1,10 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useEffect } from 'react';
 import { LiFiWidget } from '@lifi/widget';
 import { X, Loader2 } from 'lucide-react';
 import { useWeb3Modal } from '@web3modal/wagmi/react';
 import { useAccount, useWalletClient } from 'wagmi';
 import { providers } from 'ethers';
 
-// This helper function safely converts the modern `wagmi` wallet client
-// into the `ethers.js` signer format that the LI.FI widget requires.
 function walletClientToSigner(walletClient) {
   if (!walletClient) {
     return undefined;
@@ -24,36 +22,63 @@ function walletClientToSigner(walletClient) {
 
 const BridgeModal = ({ isOpen, onClose }) => {
   const { open } = useWeb3Modal();
-  const { address, isConnected } = useAccount();
+  const { address, isConnected, chain } = useAccount();
   const { data: walletClient } = useWalletClient();
 
-  // Create the ethers.js signer that the widget needs.
   const signer = useMemo(() => walletClientToSigner(walletClient), [walletClient]);
 
-  const widgetConfig = {
-    integrator: 'Timax_swap',
-    fee: {
-      amount: 0.005, // 0.5% integrator fee
-      recipient: '0x34accc793fD8C2A8e262C8C95b18D706bc6022f0',
-    },
-    signer,
-    containerStyle: {
-      border: `1px solid rgb(55, 65, 81)`,
-      borderRadius: '16px',
-    },
-    theme: {
-      palette: {
-        primary: { main: '#6366f1' },
-        secondary: { main: '#a855f7' },
-        background: { paper: '#1f2937', default: '#111827' },
-        text: { primary: '#ffffff', secondary: '#d1d5db' },
+  useEffect(() => {
+    console.log('Widget state:', {
+      isConnected,
+      address,
+      chain: chain?.id,
+      hasSigner: !!signer,
+      hasWalletClient: !!walletClient
+    });
+  }, [isConnected, address, chain, signer, walletClient]);
+
+  const widgetConfig = useMemo(() => {
+    const config = {
+      integrator: 'Timax_swap',
+      containerStyle: {
+        border: `1px solid rgb(55, 65, 81)`,
+        borderRadius: '16px',
       },
-      shape: { borderRadius: '12px', borderRadiusSecondary: '12px' },
-      typography: { fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif' }
-    },
-    appearance: 'dark',
-    hiddenUI: ['walletMenu'],
-  };
+      theme: {
+        palette: {
+          primary: { main: '#6366f1' },
+          secondary: { main: '#a855f7' },
+          background: { paper: '#1f2937', default: '#111827' },
+          text: { primary: '#ffffff', secondary: '#d1d5db' },
+        },
+        shape: { 
+          borderRadius: 12,  // Changed from '12px' to 12
+          borderRadiusSecondary: 12  // Changed from '12px' to 12
+        },
+        typography: { 
+          fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif' 
+        }
+      },
+      appearance: 'dark',
+      variant: 'expandable',
+    };
+
+    if (signer && address) {
+      config.walletManagement = {
+        signer,
+        connect: async () => {
+          console.log('Widget requesting connection');
+          await open();
+        },
+        disconnect: async () => {
+          console.log('Widget requesting disconnect');
+        },
+      };
+    }
+
+    console.log('Widget config:', config);
+    return config;
+  }, [signer, address, open]);
 
   if (!isOpen) return null;
 
@@ -67,19 +92,13 @@ const BridgeModal = ({ isOpen, onClose }) => {
           <X className="w-5 h-5" />
         </button>
         
-        {/* ✨ FIX: The component now has three states for a robust user experience */}
         {isConnected && signer ? (
-          // 1. If connected AND the signer is ready, show the widget.
-          // The `key` prop forces a complete re-render when the user connects.
           <LiFiWidget config={widgetConfig} key={address} />
         ) : isConnected && !signer ? (
-          // 2. If connected but the signer is NOT ready yet, show a loading spinner.
-          // This prevents the widget from rendering in a broken "read-only" state.
           <div className="bg-gradient-to-br from-gray-900 to-gray-800 rounded-2xl border border-gray-700 p-6 h-[600px] flex items-center justify-center">
              <Loader2 className="w-12 h-12 text-indigo-400 animate-spin" />
           </div>
         ) : (
-          // 3. If not connected at all, show the connect prompt.
           <div className="bg-gradient-to-br from-gray-900 to-gray-800 rounded-2xl border border-gray-700 p-6">
             <div className="text-center py-8">
               <div className="w-20 h-20 bg-indigo-500/20 rounded-full flex items-center justify-center mx-auto mb-6">
@@ -102,4 +121,3 @@ const BridgeModal = ({ isOpen, onClose }) => {
 };
 
 export default BridgeModal;
-

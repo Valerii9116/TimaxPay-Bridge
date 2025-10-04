@@ -1,4 +1,4 @@
-import { defaultWagmiConfig } from '@web3modal/wagmi/react';
+import { createWeb3Modal, defaultWagmiConfig } from '@web3modal/wagmi/react';
 import { mainnet, polygon, arbitrum, optimism, base, bsc, avalanche } from 'wagmi/chains';
 
 // 1. Get your project ID from https://cloud.walletconnect.com
@@ -15,9 +15,21 @@ const metadata = {
 const chains = [mainnet, polygon, arbitrum, optimism, base, bsc, avalanche];
 
 // This configuration is now the single source of truth for your wallet connection.
+// It is exported so it can be used by the LI.FI widget.
 export const wagmiConfig = defaultWagmiConfig({
   chains,
   projectId,
   metadata,
+});
+
+// 3. Create Web3Modal
+createWeb3Modal({
+  wagmiConfig: wagmiConfig,
+  projectId,
+  chains,
+  themeMode: 'dark',
+  themeVariables: {
+    '--w3m-accent': '#6366f1',
+  },
 });
 
