@@ -1,0 +1,20 @@
+{
+    "navigationFallback": {
+      "rewrite": "/index.html",
+      "exclude": ["/static/media/*", "/static/css/*", "/static/js/*", "*.{png,jpg,gif,svg,ico}"]
+    },
+    "routes": [
+      {
+        "route": "/*",
+        "headers": {
+          "Cache-Control": "must-revalidate, max-age=3600"
+        }
+      }
+    ],
+    "responseOverrides": {
+      "404": {
+        "rewrite": "/index.html",
+        "statusCode": 200
+      }
+    }
+  }
