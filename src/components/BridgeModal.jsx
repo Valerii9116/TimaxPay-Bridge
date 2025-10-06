@@ -30,51 +30,31 @@ const BridgeModal = ({ isOpen, onClose }) => {
   const widgetConfig = useMemo(() => {
     const config = {
       integrator: 'Timax_swap',
-      
-      // Integrator fee configuration (0.5%)
       fee: 0.005,
-      
-      // Compact variant with full height
       variant: 'compact',
       subvariant: 'split',
-      
       containerStyle: {
         border: `1px solid rgb(55, 65, 81)`,
         borderRadius: '16px',
         height: '680px',
       },
-
       theme: {
         palette: {
           primary: { main: '#6366f1' },
           secondary: { main: '#a855f7' },
-          background: { 
-            paper: '#1f2937', 
-            default: '#111827' 
-          },
-          text: { 
-            primary: '#ffffff', 
-            secondary: '#d1d5db' 
-          },
+          background: { paper: '#1f2937', default: '#111827' },
+          text: { primary: '#ffffff', secondary: '#d1d5db' },
         },
-        shape: { 
-          borderRadius: 12,
-          borderRadiusSecondary: 12
-        },
+        shape: { borderRadius: 12, borderRadiusSecondary: 12 },
         typography: { 
           fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif' 
-        }
+        },
       },
-      
       appearance: 'dark',
-      
-      // Hide language selector and theme toggle
       hiddenUI: ['language', 'appearance'],
-      
-      // SDK configuration
       sdkConfig: {
         defaultRouteOptions: {
-          fee: 0.005, // 0.5% integrator fee
+          fee: 0.005,
           integrator: 'Timax_swap',
         },
       },
@@ -85,10 +65,9 @@ const BridgeModal = ({ isOpen, onClose }) => {
         signer,
         connect: async () => {
           await open();
+          return signer;
         },
-        disconnect: async () => {
-          // Handled by Web3Modal
-        },
+        disconnect: async () => {},
       };
     }
 
@@ -99,7 +78,7 @@ const BridgeModal = ({ isOpen, onClose }) => {
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto p-4 py-8 flex justify-center items-start bg-black/80 backdrop-blur-sm">
-      <div className="relative w-full max-w-md">
+      <div className="relative w-full max-w-md" onClick={(e) => e.stopPropagation()}>
         <button
           onClick={onClose}
           className="absolute -top-2 -right-2 z-10 p-1.5 bg-gray-800 rounded-full text-gray-400 hover:text-white hover:bg-gray-700 transition-colors shadow-lg"
@@ -107,7 +86,6 @@ const BridgeModal = ({ isOpen, onClose }) => {
           <X className="w-5 h-5" />
         </button>
 
-        {/* Connected wallet info */}
         {isConnected && address && (
           <div className="mb-3 px-4 py-3 bg-gradient-to-r from-indigo-600/20 to-purple-600/20 rounded-xl border border-indigo-500/30 backdrop-blur-sm">
             <div className="flex items-center justify-between">
@@ -116,11 +94,7 @@ const BridgeModal = ({ isOpen, onClose }) => {
                 <span className="text-xs text-gray-400">Connected</span>
               </div>
               <div className="flex items-center gap-2">
-                {chain && (
-                  <span className="text-xs text-indigo-400 font-medium">
-                    {chain.name}
-                  </span>
-                )}
+                {chain && <span className="text-xs text-indigo-400 font-medium">{chain.name}</span>}
                 <span className="text-sm text-white font-mono">
                   {address.slice(0, 6)}...{address.slice(-4)}
                 </span>
@@ -128,12 +102,12 @@ const BridgeModal = ({ isOpen, onClose }) => {
             </div>
           </div>
         )}
-        
+
         {isConnected && signer ? (
           <LiFiWidget config={widgetConfig} key={address} />
         ) : isConnected && !signer ? (
           <div className="bg-gradient-to-br from-gray-900 to-gray-800 rounded-2xl border border-gray-700 p-6 h-[680px] flex items-center justify-center">
-             <Loader2 className="w-12 h-12 text-indigo-400 animate-spin" />
+            <Loader2 className="w-12 h-12 text-indigo-400 animate-spin" />
           </div>
         ) : (
           <div className="bg-gradient-to-br from-gray-900 to-gray-800 rounded-2xl border border-gray-700 p-6">
