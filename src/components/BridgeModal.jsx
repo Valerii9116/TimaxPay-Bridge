@@ -1,10 +1,11 @@
 import React, { useMemo } from 'react';
-import { LiFiWidget } from '@lifi/widget';
+import { LiFiWidget } from 'https://esm.sh/@lifi/widget@2.8.0';
 import { X, Loader2 } from 'lucide-react';
-import { useWeb3Modal } from '@web3modal/wagmi/react';
-import { useAccount, useWalletClient } from 'wagmi';
-import { providers } from 'ethers';
+import { useWeb3Modal } from 'https://esm.sh/@web3modal/wagmi@3.5.7/react';
+import { useAccount, useWalletClient } from 'https://esm.sh/wagmi@1.4.13';
+import { ethers } from 'https://esm.sh/ethers@5.7.2';
 
+// Helper function to convert a wallet client to a signer
 function walletClientToSigner(walletClient) {
   if (!walletClient) {
     return undefined;
@@ -15,7 +16,7 @@ function walletClientToSigner(walletClient) {
     name: chain.name,
     ensAddress: chain.contracts?.ensRegistry?.address,
   };
-  const provider = new providers.Web3Provider(transport, network);
+  const provider = new ethers.providers.Web3Provider(transport, network);
   const signer = provider.getSigner(account.address);
   return signer;
 }
@@ -25,12 +26,14 @@ const BridgeModal = ({ isOpen, onClose }) => {
   const { address, isConnected, chain } = useAccount();
   const { data: walletClient } = useWalletClient();
 
+  // Memoize the signer creation to avoid re-creating it on every render
   const signer = useMemo(() => walletClientToSigner(walletClient), [walletClient]);
 
+  // Memoize the widget configuration
   const widgetConfig = useMemo(() => {
     const config = {
       integrator: 'Timax_swap',
-      fee: 0.005,
+      fee: 0.005, // 0.5% integrator fee
       variant: 'compact',
       subvariant: 'split',
       containerStyle: {
@@ -42,12 +45,21 @@ const BridgeModal = ({ isOpen, onClose }) => {
         palette: {
           primary: { main: '#6366f1' },
           secondary: { main: '#a855f7' },
-          background: { paper: '#1f2937', default: '#111827' },
-          text: { primary: '#ffffff', secondary: '#d1d5db' },
+          background: {
+            paper: '#1f2937',
+            default: '#111827',
+          },
+          text: {
+            primary: '#ffffff',
+            secondary: '#d1d5db',
+          },
         },
-        shape: { borderRadius: 12, borderRadiusSecondary: 12 },
-        typography: { 
-          fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif' 
+        shape: {
+          borderRadius: 12,
+          borderRadiusSecondary: 12,
+        },
+        typography: {
+          fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
         },
       },
       appearance: 'dark',
@@ -60,25 +72,33 @@ const BridgeModal = ({ isOpen, onClose }) => {
       },
     };
 
+    // If a signer is available, add wallet management to the config
     if (signer && address) {
       config.walletManagement = {
         signer,
         connect: async () => {
           await open();
-          return signer;
+          return signer; // Return the signer after connection
         },
-        disconnect: async () => {},
+        disconnect: async () => {
+          // Disconnection is typically handled by the Web3Modal provider
+        },
       };
     }
 
     return config;
   }, [signer, address, open]);
 
-  if (!isOpen) return null;
+  if (!isOpen) {
+    return null;
+  }
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto p-4 py-8 flex justify-center items-start bg-black/80 backdrop-blur-sm">
-      <div className="relative w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+      <div 
+        className="relative w-full max-w-md"
+        onClick={(e) => e.stopPropagation()} // Prevent clicks inside from closing the modal
+      >
         <button
           onClick={onClose}
           className="absolute -top-2 -right-2 z-10 p-1.5 bg-gray-800 rounded-full text-gray-400 hover:text-white hover:bg-gray-700 transition-colors shadow-lg"
@@ -86,6 +106,7 @@ const BridgeModal = ({ isOpen, onClose }) => {
           <X className="w-5 h-5" />
         </button>
 
+        {/* Display connected wallet info */}
         {isConnected && address && (
           <div className="mb-3 px-4 py-3 bg-gradient-to-r from-indigo-600/20 to-purple-600/20 rounded-xl border border-indigo-500/30 backdrop-blur-sm">
             <div className="flex items-center justify-between">
@@ -94,7 +115,11 @@ const BridgeModal = ({ isOpen, onClose }) => {
                 <span className="text-xs text-gray-400">Connected</span>
               </div>
               <div className="flex items-center gap-2">
-                {chain && <span className="text-xs text-indigo-400 font-medium">{chain.name}</span>}
+                {chain && (
+                  <span className="text-xs text-indigo-400 font-medium">
+                    {chain.name}
+                  </span>
+                )}
                 <span className="text-sm text-white font-mono">
                   {address.slice(0, 6)}...{address.slice(-4)}
                 </span>
@@ -103,6 +128,7 @@ const BridgeModal = ({ isOpen, onClose }) => {
           </div>
         )}
 
+        {/* Conditional rendering based on connection and signer status */}
         {isConnected && signer ? (
           <LiFiWidget config={widgetConfig} key={address} />
         ) : isConnected && !signer ? (
@@ -132,3 +158,4 @@ const BridgeModal = ({ isOpen, onClose }) => {
 };
 
 export default BridgeModal;
+
